@@ -1,0 +1,337 @@
+{% load static %}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Tienda</title>
+  <link rel="stylesheet" href="{% static 'css/style.css' %}?v=11">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">Tienda</div>
+    <div class="search"><input type="search" id="q" placeholder="Buscar productos..."></div>
+
+    <nav class="main-nav">
+      <ul>
+        <li><a href="{% url 'contacto' %}">Contacto</a></li>
+
+        <li><a href="#" data-cat="">Inicio</a></li>
+
+        <!-- NUEVO: menú de Categorías con dropdown -->
+        <li class="has-dd" id="catsMenu">
+          <button class="dd-toggle">Categorías</button>
+          <div class="dropdown" id="catDropdown">
+            <button class="dropdown-action" data-cat="">Todas</button>
+            <hr>
+            <div id="catList"><!-- se llena por JS --></div>
+          </div>
+        </li>
+
+        <li><a href="#" data-filter="Ofertas">Ofertas</a></li>
+
+        <li class="has-dd">
+          <button class="dd-toggle">Mi cuenta <span class="badge-cart" id="cartBadge">0</span></button>
+          <div class="dropdown right" id="accountDropdown">
+            <div class="cart-head"><strong>Carrito</strong></div>
+            <div class="cart-items" id="cartItems">
+              <div class="meta">Tu carrito está vacío.</div>
+            </div>
+            <div class="cart-foot">
+              <span class="cart-total" id="cartTotal">Total: $0.00</span>
+              <button class="btn btn-primary">Ver carrito</button>
+            </div>
+          </div>
+        </li>
+      </ul>
+    </nav>
+  </header>
+
+  <section class="hero-simple">
+    <div class="hero-inner">
+      <h2>Descubre nuestras ofertas</h2>
+      <p>Productos con envío rápido y garantía.</p>
+    </div>
+  </section>
+
+  <!-- Simplifico tabs: Todos / Ofertas -->
+  <div class="tabs" role="tablist" aria-label="categorías">
+    <button class="tab" aria-selected="true" role="tab" data-category="">Todos</button>
+    <button class="tab" role="tab" data-category="Ofertas">Ofertas</button>
+  </div>
+
+  <main class="tab-panel">
+    <div id="grid" class="grid-products" aria-live="polite"></div>
+  </main>
+
+  <!-- Modal: Detalles -->
+  <div id="detailsModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-backdrop" data-close="1"></div>
+    <article class="modal-card" role="dialog" aria-modal="true" aria-labelledby="detTitle">
+      <header style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px">
+        <h3 id="detTitle" style="margin:0">Detalles del producto</h3>
+        <button class="btn btn-ghost" data-close="1">Cerrar</button>
+      </header>
+      <div style="display:grid;grid-template-columns:minmax(260px,340px) 1fr;gap:16px;align-items:start">
+        <img id="detImg" src="{% static 'img/placeholder.png' %}" alt="Imagen del producto"
+             style="width:100%;height:280px;object-fit:cover;border-radius:12px;background:#f3f3f3">
+        <div>
+          <h4 id="detName" style="margin:0 0 4px"></h4>
+          <div id="detPrice" class="price"></div>
+          <div id="detMeta" style="color:#6b7280;margin:6px 0 12px"></div>
+          <p id="detDesc" style="white-space:pre-wrap;margin:0;max-height:48vh;overflow:auto"></p>
+        </div>
+      </div>
+    </article>
+  </div>
+
+  <!-- Modal: Cantidad para agregar al carrito -->
+  <div id="qtyModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-backdrop" data-close="1"></div>
+    <article class="modal-card" role="dialog" aria-modal="true" aria-labelledby="qtyTitle">
+      <h3 id="qtyTitle" style="margin:0 0 8px">Agregar al carrito</h3>
+      <p class="cm-name" id="cmName"></p>
+
+      <div class="cm-row">
+        <label for="cmQty">Cantidad</label>
+        <input id="cmQty" type="number" min="1" value="1">
+      </div>
+      <div class="cm-row">
+        <label>Precio unitario</label>
+        <strong id="cmUnit">$0.00</strong>
+      </div>
+      <div class="cm-row total">
+        <label>Total</label>
+        <strong id="cmTotal">$0.00</strong>
+      </div>
+
+      <div class="cm-actions">
+        <button class="btn btn-ghost" data-close="1">Cancelar</button>
+        <button class="btn btn-primary" id="cmConfirm">Agregar</button>
+      </div>
+    </article>
+  </div>
+
+  <!-- URL del endpoint DRF -->
+  <script>
+    window.PRODUCTS_API = "{% url 'product-list' as p1 %}{{ p1|default:'' }}";
+    if(!window.PRODUCTS_API){ window.PRODUCTS_API = "{% url 'products-list' as p2 %}{{ p2|default:'' }}"; }
+    if(!window.PRODUCTS_API){ window.PRODUCTS_API = "/products/"; }
+  </script>
+
+  <script>
+    const $  = sel => document.querySelector(sel);
+    const $$ = sel => document.querySelectorAll(sel);
+    const money = n => Number(n||0).toLocaleString('es-MX',{style:'currency',currency:'MXN'});
+    const PLACEHOLDER = "{% static 'img/placeholder.png' %}";
+
+    // Dropdown genérico
+    document.addEventListener('click', (e) => {
+      const dd = e.target.closest('.has-dd');
+      $$('.has-dd').forEach(el => { if (el !== dd) el.classList.remove('open'); });
+      if (dd && e.target.closest('.dd-toggle')) dd.classList.toggle('open');
+      if (!e.target.closest('.has-dd')) $('.has-dd')?.classList.remove('open');
+    });
+
+    // Tabs (Todos/Ofertas)
+    $$('.tab').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        $$('.tab').forEach(b=>b.setAttribute('aria-selected','false'));
+        btn.setAttribute('aria-selected','true');
+        const cat = btn.dataset.category||'';
+        filterByCategory(cat);
+      });
+    });
+
+    let products = [];
+    let currentCategory = '';
+
+    async function loadProducts(){
+      try{
+        const res = await fetch(window.PRODUCTS_API, {headers:{'Accept':'application/json'}});
+        if(!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const rows = Array.isArray(data) ? data : (Array.isArray(data.results) ? data.results : []);
+
+        products = rows.map(p=>({
+          id: p.id,
+          name: p.name || p.nombre || 'Producto',
+          slug: p.slug || '',
+          price: Number(p.price ?? p.precio ?? 0),
+          description: p.description || p.descripcion || '',
+          category_name: p.category_name || p.categoria || (p.category?.name || p.category?.nombre) || '',
+          stock: p.stock ?? 0,
+          image: p.image || p.imagen || ''
+        }));
+
+        // ---- Llenar dropdown de categorías dinámicamente ----
+        const cats = [...new Set(products
+                      .map(x => (x.category_name||'').trim())
+                      .filter(Boolean))].sort();
+
+        const catList = $('#catList');
+        catList.innerHTML = cats.map(c =>
+          `<button class="dropdown-action" data-cat="${c}">${c}</button>`
+        ).join('') || '<div class="meta">Sin categorías.</div>';
+
+        render(products);
+      }catch(err){
+        console.error('Error cargando productos:', err);
+        $('#grid').innerHTML = `
+          <article class="card" style="grid-column:1/-1">
+            No se pudieron cargar los productos desde <code>${window.PRODUCTS_API}</code>.
+          </article>`;
+      }
+    }
+
+    function render(list){
+      const grid = $('#grid');
+      if(!list.length){
+        grid.innerHTML = `<article class="card" style="grid-column:1/-1;text-align:center">No hay productos disponibles.</article>`;
+        return;
+      }
+      grid.innerHTML = list.map(p=>`
+        <article class="card" data-id="${p.id}">
+          <span class="badge">${p.category_name || 'General'}</span>
+          <img src="${p.image || PLACEHOLDER}" alt="${p.name}"
+               onerror="this.onerror=null;this.src='${PLACEHOLDER}'">
+          <h3>${p.name}</h3>
+          <div class="price">${money(p.price)}</div>
+          <div class="actions">
+            <button class="btn btn-primary" data-add="${p.id}">Agregar al carrito</button>
+            <button class="btn btn-ghost" data-det="${p.id}">Detalles</button>
+          </div>
+        </article>
+      `).join('');
+    }
+
+    function filterByCategory(cat){
+      currentCategory = cat || '';
+      if(!currentCategory){
+        render(products);
+        return;
+      }
+      // “Ofertas” lo dejo como ejemplo de filtro textual (ajústalo a tu lógica real)
+      if(currentCategory.toLowerCase()==='ofertas'){
+        render(products.filter(p => /oferta|descuento|promo/i.test(p.description||'')));
+      }else{
+        render(products.filter(p => (p.category_name||'').toLowerCase() === currentCategory.toLowerCase()));
+      }
+    }
+
+    // -------- Carrito (con cantidades) --------
+    const cart = {items:[], total:0};
+    function pushToCart(prod, qty){
+      const line = { id: prod.id, name: prod.name, price: prod.price, qty };
+      cart.items.push(line);
+      cart.total += prod.price * qty;
+
+      $('#cartBadge').textContent = cart.items.reduce((a,i)=>a+i.qty,0);
+      $('#cartItems').innerHTML = cart.items.map(i =>
+        `<div class="cart-item">
+           <div><strong>${i.name}</strong>
+             <div class="meta">${i.qty} × ${money(i.price)}</div>
+           </div>
+           <div>${money(i.qty*i.price)}</div>
+         </div>`
+      ).join('');
+      $('#cartTotal').textContent = `Total: ${money(cart.total)}`;
+    }
+
+    // Modal cantidad
+    const qtyModal = $('#qtyModal');
+    const cmName   = $('#cmName');
+    const cmQty    = $('#cmQty');
+    const cmUnit   = $('#cmUnit');
+    const cmTotal  = $('#cmTotal');
+    const cmConfirm= $('#cmConfirm');
+    let productSelected = null;
+
+    function openQtyModal(id){
+      const p = products.find(x=>x.id==id); if(!p) return;
+      productSelected = p;
+      cmName.textContent = p.name;
+      cmUnit.textContent = money(p.price);
+      cmQty.value = 1;
+      cmTotal.textContent = money(p.price);
+      qtyModal.classList.remove('hidden');
+      qtyModal.setAttribute('aria-hidden','false');
+      cmQty.focus();
+    }
+    function closeQtyModal(){
+      qtyModal.classList.add('hidden');
+      qtyModal.setAttribute('aria-hidden','true');
+      productSelected = null;
+    }
+    cmQty.addEventListener('input', ()=>{
+      const q = Math.max(1, parseInt(cmQty.value||'1',10));
+      cmQty.value = q;
+      if(productSelected) cmTotal.textContent = money(productSelected.price * q);
+    });
+    cmConfirm.addEventListener('click', ()=>{
+      const q = Math.max(1, parseInt(cmQty.value||'1',10));
+      if(productSelected) pushToCart(productSelected, q);
+      closeQtyModal();
+    });
+    qtyModal.addEventListener('click', e => { if(e.target.dataset.close) closeQtyModal(); });
+
+    // Modal detalles
+    const detailsModal = $('#detailsModal');
+    const det = {
+      name: $('#detName'),
+      price: $('#detPrice'),
+      meta:  $('#detMeta'),
+      desc:  $('#detDesc'),
+      img:   $('#detImg')
+    };
+    function openDetails(id){
+      const p = products.find(x=>x.id==id); if(!p) return;
+      det.name.textContent = p.name;
+      det.price.textContent = money(p.price);
+      det.meta.textContent  = `Categoría: ${p.category_name || '—'} · Stock: ${p.stock}`;
+      det.desc.textContent  = p.description || 'Sin descripción.';
+      det.img.src = p.image || PLACEHOLDER;
+      det.img.onerror = ()=>{ det.img.src = PLACEHOLDER; };
+      detailsModal.classList.remove('hidden');
+      detailsModal.setAttribute('aria-hidden','false');
+    }
+    function closeDetails(){
+      detailsModal.classList.add('hidden');
+      detailsModal.setAttribute('aria-hidden','true');
+    }
+    detailsModal.addEventListener('click', e => { if(e.target.dataset.close) closeDetails(); });
+
+    // Delegación de clicks (incluye categorías)
+    document.addEventListener('click', e=>{
+      // Categoría desde el dropdown o los enlaces con data-cat
+      if(e.target.matches('[data-cat]')){
+        e.preventDefault();
+        filterByCategory(e.target.dataset.cat || '');
+        $('#catsMenu')?.classList.remove('open');
+        return;
+      }
+
+      const detId = e.target.dataset.det; if(detId){ e.preventDefault(); openDetails(detId); }
+      const addId = e.target.dataset.add; if(addId){ e.preventDefault(); openQtyModal(addId); }
+    });
+
+    // Búsqueda (respeta el filtro por categoría si está activo)
+    $('#q')?.addEventListener('input', e=>{
+      const t = e.target.value.trim().toLowerCase();
+      const base = currentCategory
+        ? products.filter(p => (p.category_name||'').toLowerCase()===currentCategory.toLowerCase())
+        : products;
+      render(base.filter(p =>
+        p.name.toLowerCase().includes(t) ||
+        (p.category_name||'').toLowerCase().includes(t)
+      ));
+    });
+
+    // ESC cierra modales
+    document.addEventListener('keydown', e=>{
+      if(e.key==='Escape'){ closeDetails(); closeQtyModal(); }
+    });
+
+    loadProducts();
+  </script>
+</body>
+</html>

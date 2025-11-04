@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ventas</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="navbar">
+    <div class="logo">TiendaExpress</div>
+  </header>
+
+  <main class="ventas-container">
+    <h2>Selecciona tus productos</h2>
+
+    <div class="productos-lista">
+      <div class="producto-item">
+        <input type="checkbox" class="producto-check" data-nombre="Mouse Gamer" data-precio="499">
+        <label>Mouse Gamer — $499</label>
+        <input type="number" class="cantidad" value="1" min="1">
+      </div>
+
+      <div class="producto-item">
+        <input type="checkbox" class="producto-check" data-nombre="Teclado Mecánico" data-precio="899">
+        <label>Teclado Mecánico — $899</label>
+        <input type="number" class="cantidad" value="1" min="1">
+      </div>
+
+      <div class="producto-item">
+        <input type="checkbox" class="producto-check" data-nombre="Monitor 24 pulgadas" data-precio="3599">
+        <label>Monitor 24" — $3,599</label>
+        <input type="number" class="cantidad" value="1" min="1">
+      </div>
+    </div>
+
+    <div class="resumen-compra">
+      <h3>Resumen de compra</h3>
+      <div id="listaSeleccionados"></div>
+      <p><strong>Total: $<span id="total">0</span></strong></p>
+
+      <label><input type="checkbox" id="terminos"> Acepto términos y condiciones</label><br>
+      <button onclick="confirmarCompra()" class="btn">Comprar</button>
+      <button onclick="resetCompra()" class="btn-secondary">Cancelar</button>
+    </div>
+  </main>
+
+  <script src="js/main.js"></script>
+</body>
+</html>
