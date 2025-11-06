@@ -134,7 +134,10 @@
   // ==== Compras (GET) ====
   async function loadPurchases(){
     try{
-      const res = await fetch(window.API_SALES_LIST, { headers: { 'Accept':'application/json' }});
+      const res = await fetch(window.API_SALES_LIST, {
+        headers: { 'Accept':'application/json' },
+        credentials: 'same-origin'
+      });
       if(!res.ok) throw new Error('HTTP '+res.status);
       const data = await res.json();
       const rows = Array.isArray(data) ? data : (Array.isArray(data.results) ? data.results : []);
@@ -190,6 +193,7 @@
           'X-CSRFToken': getCsrfToken(),
           'Accept': 'application/json'
         },
+        credentials: 'same-origin',
         body: JSON.stringify({ status })
       });
       if(!res.ok) throw new Error('HTTP '+res.status);
@@ -235,6 +239,7 @@
           'Accept': 'application/json',
           'X-Requested-With': 'XMLHttpRequest'
         },
+        credentials: 'same-origin',
         body: JSON.stringify(payload)
       });
 
