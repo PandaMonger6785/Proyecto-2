@@ -1,3 +1,4 @@
+from django.db import transaction
 from rest_framework import serializers
 from .models import Product, Category, Sale, SaleItem
 
@@ -33,8 +34,8 @@ class SaleItemSerializer(serializers.ModelSerializer):
     product_id = serializers.IntegerField(write_only=True, required=True)
 
     # Lectura “bonita”
-    product_name  = serializers.CharField(source="product.name", read_only=True)
-    category_name = serializers.CharField(source="product.category.name", read_only=True)
+    product_name  = serializers.CharField(read_only=True)
+    category_name = serializers.CharField(read_only=True)
     subtotal      = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
@@ -51,6 +52,7 @@ class SaleItemSerializer(serializers.ModelSerializer):
             "status",
             "subtotal",
         )
+        read_only_fields = ("id", "product_name", "category_name", "subtotal")
 
     def get_subtotal(self, obj):
         return obj.subtotal  # asumiendo que tu modelo expone .subtotal (propiedad o @property)
@@ -82,31 +84,40 @@ class SaleSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Debes seleccionar al menos un producto.")
 
         # Autocompletar customer_name si no vino
-        if not validated_data.get("customer_name") and getattr(request, "user", None):
-            u = request.user
-            validated_data["customer_name"] = u.get_full_name() or u.get_username()
+        if not validated_data.get("customer_name"):
+            if getattr(request, "user", None) and request.user.is_authenticated:
+                u = request.user
+                validated_data["customer_name"] = u.get_full_name() or u.get_username()
+            else:
+                validated_data["customer_name"] = "Cliente"
 
-        sale = Sale.objects.create(user=getattr(request, "user", None), **validated_data)
+        with transaction.atomic():
+            sale = Sale.objects.create(user=getattr(request, "user", None), **validated_data)
 
-        total = 0
-        for item in items_data:
-            prod_id    = item.pop("product_id")
-            product    = Product.objects.get(pk=prod_id)
-            quantity   = item.get("quantity", 1)
-            unit_price = item.get("unit_price") or product.price  # fallback al precio del producto
+            total = 0
+            for item in items_data:
+                prod_id = item.pop("product_id")
+                try:
+                    product = Product.objects.get(pk=prod_id, is_active=True)
+                except Product.DoesNotExist:
+                    raise serializers.ValidationError({"items": f"Producto con id {prod_id} no existe o está inactivo."})
 
-            si = SaleItem.objects.create(
-                sale=sale,
-                product=product,
-                quantity=quantity,
-                unit_price=unit_price,
-                status=item.get("status", SaleItem._meta.get_field("status").default),
-            )
-            total += si.subtotal  # asumiendo subtotal = quantity * unit_price
+                quantity = item.get("quantity", 1)
+                unit_price = item.get("unit_price") or product.price  # fallback al precio del producto
 
-        sale.total_amount = total
-        sale.save(update_fields=["total_amount"])
-        return sale
+                si = SaleItem.objects.create(
+                    sale=sale,
+                    product_name=product.name,
+                    category_name=product.category.name if product.category_id else "",
+                    quantity=quantity,
+                    unit_price=unit_price,
+                    status=item.get("status", SaleItem._meta.get_field("status").default),
+                )
+                total += si.subtotal  # quantity * unit_price
+
+            sale.total_amount = total
+            sale.save(update_fields=["total_amount"])
+            return sale
 
 
 class SaleItemStatusSerializer(serializers.ModelSerializer):

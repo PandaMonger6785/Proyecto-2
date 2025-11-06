@@ -167,6 +167,10 @@
   // Productos desde la API
   // ===============================
   let PRODUCTS = [];
+  const productEndpoint = (() => {
+    const raw = window.PRODUCTS_API;
+    return typeof raw === "string" && raw.trim() ? raw.trim() : "/api/products/?format=json";
+  })();
 
   function normalizeProduct(p) {
     const name = p.name ?? p.nombre ?? "Producto";
@@ -179,7 +183,9 @@
     const image = p.image ?? p.imagen ?? "";
     const id    = p.id;
     const slug  = p.slug || `SKU-${id}`;
-    return { id, slug, name, price, description, category_name, image };
+    const rawStock = p.stock ?? p.existencia;
+    const stock = rawStock === undefined || rawStock === null ? null : Number(rawStock);
+    return { id, slug, name, price, description, category_name, image, stock };
   }
 
   function cardHTML(p) {
@@ -223,17 +229,20 @@
   }
 
   async function loadProducts() {
-    const endpoint = "/api/products/?format=json";
     const grid = $("#grid");
-    if (grid) grid.innerHTML = `<article class="card" style="grid-column:1/-1">Cargando…</article>`;
+    if (!grid) return;
+    grid.innerHTML = `<article class="card" style="grid-column:1/-1">Cargando…</article>`;
 
     try {
-      const r = await fetch(endpoint, { headers: { "Accept": "application/json" } });
+      const r = await fetch(productEndpoint, {
+        headers: { "Accept": "application/json" },
+        credentials: "same-origin"
+      });
       const text = await r.text();
-      console.log("[HOME] GET", endpoint, r.status);
+      console.log("[HOME] GET", productEndpoint, r.status);
 
       if (text.trim().startsWith("<")) {
-        return showGridError("La API devolvió HTML (¿redirección a login?).", endpoint);
+        return showGridError("La API devolvió HTML (¿redirección a login?).", productEndpoint);
       }
 
       const data = JSON.parse(text);
@@ -244,8 +253,27 @@
 
       PRODUCTS = rows.map(normalizeProduct);
       renderGrid(PRODUCTS);
+      renderCategories(PRODUCTS);
     } catch (err) {
       showGridError("Error cargando productos.", String(err));
+    }
+  }
+
+  function renderCategories(list) {
+    const cats = Array.from(new Set(
+      list.map(x => (x.category_name || "").trim()).filter(Boolean)
+    )).sort((a, b) => a.localeCompare(b, "es"));
+
+    const catList = $("#catList");
+    if (catList) {
+      catList.innerHTML = cats.length
+        ? cats.map(c => `<button class="dropdown-action" data-cat="${c}">${c}</button>`).join("")
+        : '<div class="meta">Sin categorías.</div>';
+    }
+
+    const chips = $("#catChips");
+    if (chips) {
+      chips.innerHTML = cats.map(c => `<button class="btn btn-ghost btn-small" data-cat="${c}">${c}</button>`).join("");
     }
   }
 
@@ -275,6 +303,54 @@
     ));
   });
 
+  // ===============================
+  // Modal de detalles (con fallback)
+  // ===============================
+  function makeDetailsModal() {
+    const root = $("#detailsModal");
+    if (!root) {
+      return {
+        open(p) {
+          alert(`${p.name}\n\n${p.description || "Sin descripción."}`);
+        }
+      };
+    }
+
+    const nameEl = $("#detName"),
+          priceEl= $("#detPrice"),
+          metaEl = $("#detMeta"),
+          descEl = $("#detDesc"),
+          imgEl  = $("#detImg");
+
+    const close = () => {
+      root.classList.add("hidden");
+      root.setAttribute("aria-hidden", "true");
+    };
+
+    root.addEventListener("click", e => { if (e.target.dataset.close) close(); });
+    document.addEventListener("keydown", e => { if (e.key === "Escape") close(); });
+
+    return {
+      open(p) {
+        nameEl.textContent = p.name;
+        priceEl.textContent = MXN.format(p.price);
+        const meta = [
+          p.category_name ? `Categoría: ${p.category_name}` : "",
+          Number.isFinite(p.stock) ? `Stock: ${p.stock}` : ""
+        ].filter(Boolean).join(" · ");
+        metaEl.textContent = meta;
+        descEl.textContent = p.description || "Sin descripción.";
+        if (imgEl) {
+          imgEl.src = p.image || PLACEHOLDER;
+          imgEl.onerror = () => { imgEl.src = PLACEHOLDER; };
+        }
+        root.classList.remove("hidden");
+        root.setAttribute("aria-hidden", "false");
+      }
+    };
+  }
+  const DetailsModal = makeDetailsModal();
+
   // ==== Delegación: Agregar / Detalles ====
   document.addEventListener("click", (e) => {
     const add = e.target.closest(".btn-primary[data-sku]");
@@ -293,7 +369,21 @@
     if (detId) {
       const p = PRODUCTS.find(x => String(x.id) === String(detId));
       if (!p) return;
-      alert(`${p.name}\n\n${p.description || "Sin descripción."}`);
+      DetailsModal.open(p);
+      return;
+    }
+
+    const catTarget = e.target.closest("[data-cat]");
+    if (catTarget) {
+      e.preventDefault();
+      const cat = catTarget.dataset.cat || "";
+      filterByCategory(cat);
+      $$(".tab").forEach(btn => {
+        const isSelected = (btn.dataset.category || "") === cat;
+        btn.setAttribute("aria-selected", isSelected ? "true" : "false");
+      });
+      const catsMenu = $("#catsMenu");
+      catsMenu?.classList.remove("open");
     }
   });
 
