@@ -1,0 +1,238 @@
+{% block extra_js %}
+  {{ block.super }}
+  <script>
+    // ===== Endpoints =====
+    window.API_SALES_LIST = "{% url 'tienda:sale-list' %}";
+    window.API_SALE_ITEM_DETAIL_TEMPLATE = "{% url 'tienda:sale-item-detail' pk=0 %}";
+    function saleItemDetailUrl(id){ return window.API_SALE_ITEM_DETAIL_TEMPLATE.replace('/0/', `/${id}/`); }
+
+    const numberFormatter = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
+    const STATUS_LABELS = JSON.parse(document.getElementById('status-labels').textContent);
+
+    // ==== CSRF helpers ====
+    function getCookie(name) {
+      const value = `; ${document.cookie}`;
+      const parts = value.split(`; ${name}=`);
+      if (parts.length === 2) return parts.pop().split(';').shift();
+    }
+    function getCsrfToken(){
+      return getCookie('csrftoken') || document.getElementById('csrfToken').value;
+    }
+
+    // ==== Productos presentes en el DOM ====
+    const productos = Array.from(document.querySelectorAll('.producto-item')).map(item => ({
+      node: item,
+      checkbox: item.querySelector('.select-producto'),
+      qty: item.querySelector('.cantidad'),
+      name: item.dataset.nombre,
+      price: Number(item.dataset.precio || 0),
+      id: Number(item.dataset.id),              // <- asegúrate que sea numérico
+      category: item.dataset.categoria || ''
+    }));
+
+    function updateResumen(){
+      const lista = document.getElementById('listaSeleccionados');
+      const totalSpan = document.getElementById('total');
+
+      const seleccionados = productos
+        .filter(p => p.checkbox.checked)
+        .map(p => {
+          const qty = Math.max(1, parseInt(p.qty.value || '1', 10));
+          return {
+            id: p.id,
+            name: p.name,
+            price: p.price,
+            qty,
+            subtotal: qty * p.price,
+            category: p.category
+          };
+        });
+
+      if(!seleccionados.length){
+        lista.innerHTML = '<p class="meta">No has seleccionado productos.</p>';
+        totalSpan.textContent = '0.00';
+        return seleccionados;
+      }
+
+      lista.innerHTML = seleccionados.map(item => `
+        <div class="resumen-item">
+          <div>
+            <strong>${item.name}</strong>
+            <div class="meta">${item.qty} × ${numberFormatter.format(item.price)}</div>
+          </div>
+          <div>${numberFormatter.format(item.subtotal)}</div>
+        </div>
+      `).join('');
+
+      const total = seleccionados.reduce((acc, it) => acc + it.subtotal, 0);
+      totalSpan.textContent = total.toFixed(2);
+      return seleccionados;
+    }
+
+    // Listeners de cambios en cantidad / selección
+    productos.forEach(p => {
+      p.checkbox.addEventListener('change', updateResumen);
+      p.qty.addEventListener('change', () => {
+        if(p.qty.value <= 0) p.qty.value = 1;
+        updateResumen();
+      });
+    });
+
+    // ==== Compras (GET) ====
+    async function loadPurchases(){
+      try{
+        const res = await fetch(window.API_SALES_LIST, { headers: { 'Accept':'application/json' }});
+        if(!res.ok) throw new Error('HTTP '+res.status);
+        const data = await res.json();
+        const rows = Array.isArray(data) ? data : (Array.isArray(data.results) ? data.results : []);
+        renderPurchases(rows);
+      }catch(err){
+        console.error('Error cargando compras', err);
+      }
+    }
+
+    function renderPurchases(sales){
+      const box = document.getElementById('purchasesList');
+      if(!sales.length){
+        box.innerHTML = '<p class="meta">Aún no tienes compras registradas.</p>';
+        return;
+      }
+      const html = sales.map(sale => {
+        const items = (sale.items || []).map(item => `
+          <div class="purchase-item" data-id="${item.id}" data-sale="${sale.id}">
+            <div>
+              <strong>${item.product_name}</strong>
+              <div class="meta">${item.quantity} × ${numberFormatter.format(item.unit_price)}</div>
+              ${item.category_name ? `<div class="meta">Categoría: ${item.category_name}</div>` : ''}
+              <div class="badge badge-${item.status}">${STATUS_LABELS[item.status] || item.status}</div>
+            </div>
+            <div class="purchase-actions">
+              <button class="btn btn-small" data-action="received" ${item.status==='received' ? 'disabled' : ''}>Recibido</button>
+              <button class="btn btn-small btn-ghost" data-action="return" ${item.status==='return_requested' ? 'disabled' : ''}>Devolución</button>
+            </div>
+          </div>
+        `).join('');
+        return `
+          <article class="purchase-card">
+            <header>
+              <h4>Compra #${sale.id}</h4>
+              <span class="meta">Total: ${numberFormatter.format(sale.total_amount)}</span>
+              <span class="meta">${new Date(sale.created_at).toLocaleString('es-MX')}</span>
+            </header>
+            <div class="purchase-items">${items}</div>
+          </article>
+        `;
+      }).join('');
+      box.innerHTML = html;
+    }
+
+    // ==== Actualizar estado (PATCH) ====
+    async function actualizarEstado(itemId, status){
+      try{
+        const url = saleItemDetailUrl(itemId);
+        const res = await fetch(url, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken(),
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify({ status })
+        });
+        if(!res.ok) throw new Error('HTTP '+res.status);
+        pushToast?.('Estado actualizado correctamente.', 'success');
+        loadPurchases();
+      }catch(err){
+        console.error('Error actualizando estado', err);
+        pushToast?.('No se pudo actualizar el estado.', 'danger');
+      }
+    }
+
+    // ==== Crear venta (POST) ====
+    document.getElementById('btnComprar').addEventListener('click', async () => {
+      const seleccionados = updateResumen();
+      const feedback = document.getElementById('ventasFeedback');
+      feedback.innerHTML = '';
+
+      if(!seleccionados.length){
+        feedback.innerHTML = '<div class="msg-err">Selecciona al menos un producto.</div>';
+        return;
+      }
+      if(!document.getElementById('terminos').checked){
+        feedback.innerHTML = '<div class="msg-err">Debes aceptar los términos y condiciones.</div>';
+        return;
+      }
+
+      // === AQUI EL CAMBIO CLAVE: product_id en lugar de product_name ===
+      const payload = {
+        terms_accepted: true,
+        items: seleccionados.map(item => ({
+          product_id: Number(item.id),     // <- requerido por el serializer
+          quantity: item.qty,
+          unit_price: item.price           // si tu backend lo ignora y usa Product.price, también sirve
+        }))
+      };
+
+      try{
+        const res = await fetch(window.API_SALES_LIST, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken(),
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if(!res.ok){
+          // Mostrar con detalle qué devolvió DRF
+          let msg = 'Error desconocido';
+          try {
+            const data = await res.json();
+            console.error('Errores DRF:', data);
+            msg = typeof data === 'string' ? data : JSON.stringify(data);
+          } catch {
+            msg = await res.text();
+          }
+          throw new Error(msg);
+        }
+
+        pushToast?.('Compra registrada correctamente.', 'success');
+        productos.forEach(p => { p.checkbox.checked = false; p.qty.value = 1; });
+        document.getElementById('terminos').checked = false;
+        updateResumen();
+        loadPurchases();
+      }catch(err){
+        console.error('Error al crear la venta', err);
+        feedback.innerHTML = `<div class="msg-err">${err.message}</div>`;
+      }
+    });
+
+    // Cancelar
+    document.getElementById('btnCancelar').addEventListener('click', () => {
+      productos.forEach(p => { p.checkbox.checked = false; p.qty.value = 1; });
+      document.getElementById('terminos').checked = false;
+      document.getElementById('ventasFeedback').innerHTML = '';
+      updateResumen();
+    });
+
+    // Listeners en la lista de compras
+    document.getElementById('purchasesList').addEventListener('click', (e) => {
+      const action = e.target.dataset.action;
+      if(!action) return;
+      const item = e.target.closest('.purchase-item');
+      const itemId = item?.dataset.id;
+      if(!itemId) return;
+      if(action === 'received'){
+        actualizarEstado(itemId, 'received');
+      }else if(action === 'return'){
+        actualizarEstado(itemId, 'return_requested');
+      }
+    });
+
+    // Init
+    updateResumen();
+    loadPurchases();
+  </script>
+{% endblock %}
