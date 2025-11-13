@@ -1,0 +1,53 @@
+{% load static %}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Panel de reportes{% endblock %}</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/normalize/8.0.1/normalize.min.css">
+  <style>
+    body{font-family:"Segoe UI",Arial,sans-serif;background:#0f172a;color:#0f172a;margin:0;}
+    header{background:#1e293b;color:#fff;padding:16px 24px;display:flex;justify-content:space-between;align-items:center;}
+    main{padding:24px;background:#f8fafc;min-height:calc(100vh - 72px);} 
+    a{color:#0f172a;text-decoration:none;font-weight:600;}
+    .btn{display:inline-flex;align-items:center;gap:6px;background:#2563eb;color:#fff;padding:10px 16px;border-radius:8px;border:0;cursor:pointer;font-weight:600;}
+    .btn-secondary{background:#334155;color:#fff;}
+    .btn-link{background:transparent;color:#fff;border:0;cursor:pointer;}
+    .card{background:#fff;border-radius:12px;box-shadow:0 12px 20px rgba(15,23,42,.12);padding:24px;margin-bottom:24px;}
+    table{width:100%;border-collapse:collapse;font-size:.95rem;}
+    th,td{padding:10px 12px;text-align:left;border-bottom:1px solid #e2e8f0;}
+    th{background:#e2e8f0;color:#1e293b;text-transform:uppercase;font-size:.75rem;letter-spacing:.05em;}
+    tr:hover{background:#f1f5f9;}
+    form.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px;}
+    form.filters label{display:flex;flex-direction:column;font-size:.85rem;color:#334155;gap:6px;}
+    input,select{border:1px solid #cbd5f5;border-radius:8px;padding:8px 10px;font-size:1rem;}
+    .stats{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;}
+    .stat{background:#1d4ed8;color:#fff;padding:16px 20px;border-radius:12px;min-width:180px;box-shadow:0 10px 18px rgba(37,99,235,.25);}
+    .login-container{max-width:360px;margin:80px auto;background:#fff;padding:32px;border-radius:12px;box-shadow:0 16px 36px rgba(15,23,42,.2);} 
+    .login-container h1{text-align:center;margin-bottom:20px;color:#1e293b;}
+    .login-container form{display:grid;gap:12px;}
+    .login-container label{display:flex;flex-direction:column;gap:6px;font-weight:600;color:#1e293b;}
+    .login-container input{padding:10px 12px;border-radius:8px;border:1px solid #cbd5f5;}
+    .alert{background:#fee2e2;color:#991b1b;border:1px solid #fecaca;padding:10px;border-radius:8px;margin-bottom:12px;}
+    @media (max-width:720px){header{flex-direction:column;align-items:flex-start;gap:12px;}main{padding:16px;}}
+  </style>
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  <header>
+    <div>
+      <strong>Reportes administrativos</strong>
+    </div>
+    <div>
+      {% if request.user.is_authenticated %}
+        <span style="margin-right:12px">{{ request.user.get_full_name|default:request.user.username }}</span>
+        <a class="btn-link" href="{% url 'dashboard:logout' %}">Cerrar sesión</a>
+      {% endif %}
+    </div>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
