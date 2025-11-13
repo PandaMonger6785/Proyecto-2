@@ -1,0 +1,232 @@
+{% load static %}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}TiendaExpress{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'css/base.css' %}?v=1">
+  {% block extra_head %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+  <header class="top">
+    <div class="brand"><a href="{% url 'tienda:home' %}" class="nav-link">TiendaExpress</a></div>
+    <div class="search">
+      <input type="search" id="globalSearch" placeholder="Buscar productos...">
+    </div>
+    <nav class="main-nav">
+      <ul>
+        <li><a href="{% url 'tienda:home' %}" class="nav-link">Inicio</a></li>
+
+        <li class="has-dd" id="catsMenu">
+          <button class="dd-toggle" type="button">Categorías</button>
+          <div class="dropdown" id="catDropdown">
+            <button class="dropdown-action" type="button" data-cat="">Todas</button>
+            <hr>
+            <div id="catList" class="cat-list"><!-- Se llena con JS --></div>
+          </div>
+        </li>
+
+        <li class="has-dd" id="cartMenu">
+          <button class="dd-toggle" type="button">
+            Carrito <span class="badge-cart" id="cartBadge">0</span>
+          </button>
+          <div class="dropdown right" id="cartDropdown">
+            <div class="cart-head"><strong>Carrito</strong></div>
+            <div class="cart-items" id="cartItems">
+              <div class="meta">Tu carrito está vacío.</div>
+            </div>
+            <div class="cart-foot">
+              <span class="cart-total" id="cartTotal">Total: $0.00</span>
+              <a class="btn btn-primary" href="{% url 'tienda:ventas' %}" id="goCartBtn">Ir a compras</a>
+            </div>
+          </div>
+        </li>
+
+        <li class="has-dd">
+          <button class="dd-toggle" type="button" id="accountToggle">
+            {% if user.is_authenticated %}
+              {{ user.username }}
+            {% else %}
+              Cuenta
+            {% endif %}
+          </button>
+          <div class="dropdown right" id="accountDropdown">
+            {% if user.is_authenticated %}
+              <div class="account-inner">
+                <div class="account-title">Hola, {{ user.get_full_name|default:user.username }}</div>
+                <a class="dropdown-action" href="{% url 'tienda:ventas' %}">Mis compras</a>
+                <hr>
+                <a class="btn btn-ghost" href="{% url 'tienda:logout' %}">Cerrar sesión</a>
+              </div>
+            {% else %}
+              <div class="account-inner">
+                <p class="account-meta">Inicia sesión para ver tus pedidos.</p>
+                <div class="account-actions">
+                  <a class="btn btn-primary" href="{% url 'tienda:login' %}">Iniciar sesión</a>
+                  <a class="btn btn-ghost" href="{% url 'tienda:signup' %}">Crear cuenta</a>
+                </div>
+              </div>
+            {% endif %}
+          </div>
+        </li>
+      </ul>
+    </nav>
+  </header>
+
+  <main class="page-content">
+    {% block content %}{% endblock %}
+  </main>
+
+  <div id="modalLayer" class="modal hidden" aria-hidden="true">
+    <div class="modal-backdrop" data-close="1"></div>
+    <article class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <header class="modal-header">
+        <h3 id="modalTitle">Aviso importante</h3>
+        <button type="button" class="btn btn-ghost" data-close="1">Cerrar</button>
+      </header>
+      <div id="modalContent"></div>
+    </article>
+  </div>
+
+  <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+  <script>
+    const $$ = (sel, ctx=document) => Array.from(ctx.querySelectorAll(sel));
+    const $  = (sel, ctx=document) => ctx.querySelector(sel);
+
+    document.addEventListener('click', (e) => {
+      const current = e.target.closest('.has-dd');
+      $$('.has-dd').forEach(dd => { if (dd !== current) dd.classList.remove('open'); });
+      if (current && e.target.closest('.dd-toggle')) current.classList.toggle('open');
+      if (!e.target.closest('.has-dd')) $$('.has-dd').forEach(dd => dd.classList.remove('open'));
+    });
+
+    const modalMessages = {
+      envio:  { title: 'Información de envío', text: 'Envíos gratis a todo México en compras superiores a $999 MXN.' },
+      soporte:{ title: 'Soporte 24/7',         text: 'Nuestro equipo responde en menos de 5 minutos mediante chat en vivo.' },
+      promo:  { title: 'Promoción del mes',    text: 'Obtén 20% de descuento en accesorios seleccionados usando el cupón PROMO20.' }
+    };
+
+    function showModal(type){
+      const modal = $('#modalLayer'); if(!modal) return;
+      const data = modalMessages[type]; if(!data) return;
+      $('#modalTitle').textContent  = data.title;
+      $('#modalContent').textContent= data.text;
+      modal.classList.remove('hidden'); modal.setAttribute('aria-hidden','false');
+    }
+    function hideModal(){ const m=$('#modalLayer'); if(!m) return; m.classList.add('hidden'); m.setAttribute('aria-hidden','true'); }
+    document.addEventListener('click', (e) => {
+      if (e.target.dataset.showModal) showModal(e.target.dataset.showModal);
+      if (e.target.dataset.close) hideModal();
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideModal(); });
+
+    function pushToast(message, variant='info', timeout=4000){
+      const box = document.createElement('div');
+      box.className = `toast toast-${variant}`;
+      box.textContent = message;
+      $('#toastContainer')?.appendChild(box);
+      requestAnimationFrame(()=> box.classList.add('show'));
+      setTimeout(() => { box.classList.remove('show'); setTimeout(() => box.remove(), 300); }, timeout);
+    }
+    window.pushToast = pushToast;
+
+    const CART_KEY = 'tienda-cart-v1';
+    let cartState = [];
+
+    function readCart(){
+      try{
+        const raw = localStorage.getItem(CART_KEY);
+        return raw ? JSON.parse(raw) : [];
+      }catch(err){
+        console.error('No se pudo leer el carrito', err);
+        return [];
+      }
+    }
+    function saveCart(){
+      try{ localStorage.setItem(CART_KEY, JSON.stringify(cartState)); }
+      catch(err){ console.error('No se pudo guardar el carrito', err); }
+    }
+    function cartTotal(){
+      return cartState.reduce((acc, item) => acc + item.price * item.quantity, 0);
+    }
+    function renderCart(){
+      const badge = $('#cartBadge');
+      const list  = $('#cartItems');
+      const total = $('#cartTotal');
+      if(!badge || !list || !total) return;
+
+      const count = cartState.reduce((acc, item) => acc + item.quantity, 0);
+      badge.textContent = count;
+
+      if(!cartState.length){
+        list.innerHTML = '<div class="meta">Tu carrito está vacío.</div>';
+      }else{
+        list.innerHTML = cartState.map(item => `
+          <div class="cart-item" data-id="${item.id}">
+            <div>
+              <strong>${item.name}</strong>
+              <div class="meta">${item.quantity} × ${item.price.toLocaleString('es-MX',{style:'currency',currency:'MXN'})}</div>
+            </div>
+            <button class="remove" type="button" data-remove="${item.id}">Quitar</button>
+          </div>
+        `).join('');
+      }
+      total.textContent = `Total: ${cartTotal().toLocaleString('es-MX',{style:'currency',currency:'MXN'})}`;
+    }
+    function syncCart(){ saveCart(); renderCart(); }
+
+    function addToCart(item){
+      const existing = cartState.find(i => i.id === item.id);
+      if(existing){ existing.quantity += item.quantity; }
+      else{ cartState.push({...item}); }
+      syncCart();
+      pushToast?.('Producto agregado al carrito.', 'success');
+    }
+    function removeFromCart(id){
+      cartState = cartState.filter(item => item.id !== id);
+      syncCart();
+    }
+
+    document.addEventListener('click', (e) => {
+      const removeId = e.target.dataset.remove;
+      if(removeId){
+        removeFromCart(Number(removeId));
+      }
+    });
+
+    document.addEventListener('DOMContentLoaded', () => {
+      cartState = readCart();
+      renderCart();
+    });
+
+    window.CartManager = {
+      add(item){
+        if(!item || typeof item.id === 'undefined') return;
+        const qty = Number(item.quantity) || 1;
+        if(qty <= 0) return;
+        addToCart({
+          id: Number(item.id),
+          name: item.name || 'Producto',
+          price: Number(item.price) || 0,
+          quantity: qty
+        });
+      },
+      getItems(){ return [...cartState]; },
+      setItems(items){ cartState = Array.isArray(items) ? items : []; syncCart(); },
+      clear(){ cartState = []; syncCart(); }
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+      pushToast('¡Bienvenido a TiendaExpress!', 'success', 4500);
+      setTimeout(()=>pushToast('Revisa nuestras promociones del mes.', 'info'), 5200);
+      setTimeout(()=>pushToast('¿Necesitas ayuda? Chat 24/7.', 'warning'), 9000);
+    });
+  </script>
+
+  <script src="{% static 'js/main.js' %}?v=3"></script>
+
+  {% block extra_js %}{% endblock %}
+</body>
+</html>
