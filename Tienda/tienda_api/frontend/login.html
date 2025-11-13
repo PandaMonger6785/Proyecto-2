@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Acceso al sistema - TiendaExpress{% endblock %}
+{% block body_class %}login-page{% endblock %}
+
+{% block extra_head %}
+  <style>
+    .login-wrapper{
+      display:flex;
+      flex-direction:column;
+      gap:20px;
+      align-items:center;
+      padding:24px 12px 60px;
+    }
+    .login-links{
+      display:flex;
+      gap:14px;
+      flex-wrap:wrap;
+      justify-content:center;
+    }
+    .login-links a{
+      color:#1f2937;
+      font-weight:600;
+      text-decoration:none;
+      background:#f3f4f6;
+      padding:8px 14px;
+      border-radius:999px;
+      transition:background .2s ease, color .2s ease;
+    }
+    .login-links a:hover,
+    .login-links a:focus{
+      background:#1d4ed8;
+      color:#fff;
+    }
+    .login-card-desc{
+      color:var(--muted);
+      margin-top:-6px;
+      margin-bottom:18px;
+    }
+    .msg-global{margin-top:10px;min-height:22px;}
+    .msg-global.ok{color:#047857;font-weight:600;}
+    .msg-global.err{color:#dc2626;font-weight:600;}
+    .error{color:#dc2626;font-size:.85rem;min-height:18px;}
+    .form-group .error{margin-top:2px;}
+  </style>
+{% endblock %}
+
+{% block content %}
+  <section class="login-wrapper">
+    <nav class="login-links" aria-label="Enlaces rápidos">
+      <a href="{% url 'tienda:home' %}">Inicio</a>
+      <a href="{% url 'tienda:contacto' %}">Contacto</a>
+      <a href="{% url 'tienda:ventas' %}">Compras</a>
+    </nav>
+
+    <div class="login-container">
+      <h1 style="margin:0">Acceso al sistema</h1>
+      <p class="login-card-desc">Ingresa tu nombre de usuario y contraseña para continuar.</p>
+
+      <form id="loginForm" novalidate data-mode="demo">
+        <div class="form-group">
+          <label for="username">Nombre de usuario</label>
+          <input type="text" id="username" name="username" autocomplete="username" placeholder="Ej. juan123">
+          <div id="userError" class="error" role="alert"></div>
+        </div>
+
+        <div class="form-group">
+          <label for="password">Contraseña</label>
+          <input type="password" id="password" name="password" autocomplete="current-password" placeholder="Mínimo 6 caracteres">
+          <div id="passError" class="error" role="alert"></div>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Accesar</button>
+          <button type="reset" class="btn btn-secondary">Cancelar</button>
+        </div>
+
+        <div id="msgGlobal" class="msg-global" role="status" aria-live="polite"></div>
+      </form>
+    </div>
+  </section>
+{% endblock %}
+
+{% block extra_js %}
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const form = document.getElementById('loginForm');
+      if(!form) return;
+
+      const username = document.getElementById('username');
+      const password = document.getElementById('password');
+      const userError = document.getElementById('userError');
+      const passError = document.getElementById('passError');
+      const globalMsg = document.getElementById('msgGlobal');
+
+      const demoAccount = { user: 'demo', pass: 'demo123' };
+
+      function resetFeedback(){
+        userError.textContent = '';
+        passError.textContent = '';
+        globalMsg.textContent = '';
+        globalMsg.classList.remove('ok', 'err');
+      }
+
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        resetFeedback();
+
+        const userValue = username.value.trim();
+        const passValue = password.value.trim();
+        let hasError = false;
+
+        if(!userValue){
+          userError.textContent = 'Escribe tu usuario.';
+          hasError = true;
+        }
+        if(!passValue){
+          passError.textContent = 'Escribe tu contraseña.';
+          hasError = true;
+        }else if(passValue.length < 6){
+          passError.textContent = 'La contraseña debe tener al menos 6 caracteres.';
+          hasError = true;
+        }
+
+        if(hasError) return;
+
+        if(userValue === demoAccount.user && passValue === demoAccount.pass){
+          globalMsg.textContent = 'Acceso concedido. ¡Bienvenido!';
+          globalMsg.classList.add('ok');
+        }else{
+          globalMsg.textContent = 'Usuario o contraseña incorrectos.';
+          globalMsg.classList.add('err');
+        }
+      });
+
+      form.addEventListener('reset', () => {
+        setTimeout(resetFeedback, 0);
+      });
+    });
+  </script>
+{% endblock %}
