@@ -1,0 +1,315 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Mis compras - TiendaExpress{% endblock %}
+
+{% block content %}
+  <section class="ventas-container">
+    <article class="ventas-form">
+      <h2>Registrar una compra</h2>
+      <p class="meta">Selecciona los productos y define la cantidad que deseas comprar.</p>
+      <div id="ventasFeedback"></div>
+
+      <div class="productos-lista" id="productosLista">
+        {% if products %}
+          {% for product in products %}
+            <div class="producto-item" data-id="{{ product.id }}" data-name="{{ product.name }}" data-price="{{ product.price }}">
+              <label class="producto-check">
+                <input type="checkbox" value="{{ product.id }}">
+                <span>
+                  {{ product.name }}
+                  {% if product.category %}
+                    <span class="meta">({{ product.category.name }})</span>
+                  {% endif %}
+                </span>
+              </label>
+              <input type="number" min="1" value="1">
+            </div>
+          {% endfor %}
+        {% else %}
+          <p class="meta">No hay productos disponibles para la venta.</p>
+        {% endif %}
+      </div>
+
+      <div class="terminos">
+        <input type="checkbox" id="terminos">
+        <label for="terminos">Acepto los términos y condiciones.</label>
+      </div>
+
+      <div class="resumen-actions">
+        <button class="btn btn-primary" type="button" id="btnComprar">Registrar compra</button>
+        <button class="btn btn-ghost" type="button" id="btnLimpiar">Limpiar selección</button>
+      </div>
+    </article>
+
+    <aside class="resumen-compra">
+      <h3>Resumen de selección</h3>
+      <div class="lista-seleccionados" id="resumenLista">
+        <p class="meta">Selecciona productos para ver el resumen.</p>
+      </div>
+      <div class="cm-row total">
+        <label>Total</label>
+        <strong id="resumenTotal">$0.00</strong>
+      </div>
+    </aside>
+  </section>
+
+  <section class="compras-realizadas">
+    <div class="cart-head">
+      <h3>Historial de compras</h3>
+      <button class="btn btn-small btn-ghost" type="button" id="btnRecargarCompras">Actualizar</button>
+    </div>
+    <div id="purchasesList" class="purchases-list">
+      <p class="meta">Cargando historial...</p>
+    </div>
+  </section>
+{% endblock %}
+
+{% block extra_js %}
+  {{ status_choices|json_script:"status-labels-data" }}
+  {% url 'tienda:sale-list' as sale_list_url %}
+  {% url 'tienda:sale-item-detail' pk=0 as sale_item_detail_url %}
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const STATUS_LABELS = JSON.parse(document.getElementById('status-labels-data')?.textContent || '{}');
+      const API_SALES_LIST = "{{ sale_list_url }}";
+      const SALE_ITEM_TEMPLATE = "{{ sale_item_detail_url }}";
+
+      const productos = Array.from(document.querySelectorAll('.producto-item')).map(item => ({
+        id: Number(item.dataset.id),
+        name: item.dataset.name,
+        price: Number(item.dataset.price),
+        checkbox: item.querySelector('input[type="checkbox"]'),
+        qty: item.querySelector('input[type="number"]'),
+        element: item
+      }));
+
+      const resumenLista = document.getElementById('resumenLista');
+      const resumenTotal = document.getElementById('resumenTotal');
+      const feedback = document.getElementById('ventasFeedback');
+      const btnComprar = document.getElementById('btnComprar');
+      const btnLimpiar = document.getElementById('btnLimpiar');
+      const btnRecargar = document.getElementById('btnRecargarCompras');
+      const purchasesList = document.getElementById('purchasesList');
+      const terminos = document.getElementById('terminos');
+
+      const numberFormatter = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
+
+      function saleItemDetailUrl(id){
+        return SALE_ITEM_TEMPLATE.replace(/0\/$/, `${id}/`);
+      }
+
+      function getCsrfToken(){
+        return document.cookie.split('; ').find(row => row.startsWith('csrftoken='))?.split('=')[1] || '';
+      }
+
+      function updateResumen(){
+        const seleccionados = productos.filter(p => p.checkbox?.checked).map(item => ({
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          qty: Math.max(1, Number(item.qty?.value) || 1),
+          subtotal: Math.max(1, Number(item.qty?.value) || 1) * item.price
+        }));
+
+        if(!seleccionados.length){
+          resumenLista.innerHTML = '<p class="meta">Selecciona productos para ver el resumen.</p>';
+          resumenTotal.textContent = '$0.00';
+          return [];
+        }
+
+        resumenLista.innerHTML = seleccionados.map(item => `
+          <div class="resumen-item">
+            <div>
+              <strong>${item.name}</strong>
+              <div class="meta">${item.qty} × ${numberFormatter.format(item.price)}</div>
+            </div>
+            <div>${numberFormatter.format(item.subtotal)}</div>
+          </div>
+        `).join('');
+
+        const total = seleccionados.reduce((acc, it) => acc + it.subtotal, 0);
+        resumenTotal.textContent = numberFormatter.format(total);
+        return seleccionados;
+      }
+
+      productos.forEach(p => {
+        p.checkbox?.addEventListener('change', updateResumen);
+        p.qty?.addEventListener('change', () => {
+          if(p.qty.value <= 0) p.qty.value = 1;
+          updateResumen();
+        });
+      });
+
+      async function loadPurchases(){
+        if(purchasesList){
+          purchasesList.innerHTML = '<p class="meta">Cargando historial...</p>';
+        }
+        try{
+          const res = await fetch(API_SALES_LIST, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
+          if(!res.ok) throw new Error('HTTP '+res.status);
+          const data = await res.json();
+          const rows = Array.isArray(data) ? data : (Array.isArray(data.results) ? data.results : []);
+          renderPurchases(rows);
+        }catch(err){
+          console.error('Error cargando compras', err);
+          if(purchasesList){
+            purchasesList.innerHTML = '<p class="msg-err">No se pudieron cargar tus compras.</p>';
+          }
+        }
+      }
+
+      function renderPurchases(sales){
+        if(!purchasesList) return;
+        if(!sales.length){
+          purchasesList.innerHTML = '<p class="meta">Aún no tienes compras registradas.</p>';
+          return;
+        }
+        const html = sales.map(sale => {
+          const items = (sale.items || []).map(item => `
+            <div class="purchase-item" data-id="${item.id}" data-sale="${sale.id}">
+              <div>
+                <strong>${item.product_name}</strong>
+                <div class="meta">${item.quantity} × ${numberFormatter.format(item.unit_price)}</div>
+                ${item.category_name ? `<div class="meta">Categoría: ${item.category_name}</div>` : ''}
+                <div class="badge badge-${item.status}">${STATUS_LABELS[item.status] || item.status}</div>
+              </div>
+              <div class="purchase-actions">
+                <button class="btn btn-small" type="button" data-action="received" ${item.status==='received' ? 'disabled' : ''}>Recibido</button>
+                <button class="btn btn-small btn-ghost" type="button" data-action="return" ${item.status==='return_requested' ? 'disabled' : ''}>Devolución</button>
+              </div>
+            </div>
+          `).join('');
+          return `
+            <article class="purchase-card">
+              <header>
+                <h4>Compra #${sale.id}</h4>
+                <span class="meta">Total: ${numberFormatter.format(sale.total_amount)}</span>
+                <span class="meta">${new Date(sale.created_at).toLocaleString('es-MX')}</span>
+              </header>
+              <div class="purchase-items">${items}</div>
+            </article>
+          `;
+        }).join('');
+        purchasesList.innerHTML = html;
+      }
+
+      async function actualizarEstado(itemId, status){
+        try{
+          const url = saleItemDetailUrl(itemId);
+          const res = await fetch(url, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': getCsrfToken(),
+              'Accept': 'application/json'
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({ status })
+          });
+          if(!res.ok) throw new Error('HTTP '+res.status);
+          window.pushToast?.('Estado actualizado correctamente.', 'success');
+          loadPurchases();
+        }catch(err){
+          console.error('Error actualizando estado', err);
+          window.pushToast?.('No se pudo actualizar el estado.', 'danger');
+        }
+      }
+
+      btnComprar?.addEventListener('click', async () => {
+        const seleccionados = updateResumen();
+        feedback.innerHTML = '';
+
+        if(!seleccionados.length){
+          feedback.innerHTML = '<div class="msg-err">Selecciona al menos un producto.</div>';
+          return;
+        }
+        if(!terminos?.checked){
+          feedback.innerHTML = '<div class="msg-err">Debes aceptar los términos y condiciones.</div>';
+          return;
+        }
+
+        const payload = {
+          terms_accepted: true,
+          items: seleccionados.map(item => ({
+            product_id: Number(item.id),
+            quantity: item.qty,
+            unit_price: item.price
+          }))
+        };
+
+        try{
+          const res = await fetch(API_SALES_LIST, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': getCsrfToken(),
+              'Accept': 'application/json',
+              'X-Requested-With': 'XMLHttpRequest'
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify(payload)
+          });
+
+          if(!res.ok){
+            let message = 'No se pudo registrar la compra.';
+            try{
+              const data = await res.json();
+              message = typeof data === 'string' ? data : JSON.stringify(data);
+            }catch{ message = await res.text(); }
+            throw new Error(message);
+          }
+
+          window.pushToast?.('Compra registrada correctamente.', 'success');
+          productos.forEach(p => { if(p.checkbox) p.checkbox.checked = false; if(p.qty) p.qty.value = 1; });
+          terminos.checked = false;
+          updateResumen();
+          loadPurchases();
+        }catch(err){
+          console.error('Error al crear la venta', err);
+          feedback.innerHTML = `<div class="msg-err">${err.message}</div>`;
+        }
+      });
+
+      btnLimpiar?.addEventListener('click', () => {
+        productos.forEach(p => { if(p.checkbox) p.checkbox.checked = false; if(p.qty) p.qty.value = 1; });
+        terminos.checked = false;
+        feedback.innerHTML = '';
+        updateResumen();
+      });
+
+      purchasesList?.addEventListener('click', (e) => {
+        const action = e.target.dataset.action;
+        if(!action) return;
+        const itemEl = e.target.closest('.purchase-item');
+        if(!itemEl) return;
+        const itemId = Number(itemEl.dataset.id);
+        if(!itemId) return;
+        if(action === 'received'){
+          actualizarEstado(itemId, 'received');
+        }else if(action === 'return'){
+          actualizarEstado(itemId, 'return_requested');
+        }
+      });
+
+      btnRecargar?.addEventListener('click', loadPurchases);
+
+      const cartItems = window.CartManager?.getItems() || [];
+      if(cartItems.length){
+        cartItems.forEach(item => {
+          const product = productos.find(p => p.id === Number(item.id));
+          if(!product) return;
+          if(product.checkbox) product.checkbox.checked = true;
+          if(product.qty) product.qty.value = Math.max(1, item.quantity || 1);
+        });
+        window.CartManager?.clear();
+        updateResumen();
+        window.pushToast?.('Cargamos tu carrito en el formulario de ventas.', 'info');
+      }else{
+        updateResumen();
+      }
+
+      loadPurchases();
+    });
+  </script>
+{% endblock %}
