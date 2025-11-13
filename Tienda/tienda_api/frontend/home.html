@@ -1,0 +1,255 @@
+{% load static %}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Tienda</title>
+  <link rel="stylesheet" href="{% static 'css/style.css' %}?v=12">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">Tienda</div>
+    <div class="search"><input type="search" id="q" placeholder="Buscar productos..."></div>
+
+    <nav class="main-nav">
+      <ul>
+        <li><a href="#" data-cat="">Inicio</a></li>
+
+        <!-- Categorías -->
+        <li class="has-dd" id="catsMenu">
+          <button class="dd-toggle">Categorías</button>
+          <div class="dropdown" id="catDropdown">
+                 <button class="dropdown-action" data-cat="">Todas</button>
+            <hr>
+            <div id="catList"><!-- se llena por JS --></div>
+          </div>
+        </li>
+
+        <!-- 🔁 Aquí va el CARRITO (en lugar de “Ofertas”) -->
+        <li class="has-dd" id="cartMenu">
+          <button class="dd-toggle">
+            Carrito <span class="badge-cart" id="cartBadge">0</span>
+          </button>
+          <div class="dropdown right" id="cartDropdown">
+            <div class="cart-head"><strong>Carrito</strong></div>
+            <div class="cart-items" id="cartItems">
+              <div class="meta">Tu carrito está vacío.</div>
+            </div>
+            <div class="cart-foot">
+              <span class="cart-total" id="cartTotal">Total: $0.00</span>
+              <button class="btn btn-primary" id="goCartBtn">Ver carrito</button>
+            </div>
+          </div>
+        </li>
+
+        <!-- 👤 Mi cuenta (login/logout con Django) -->
+        <li class="has-dd" id="accountMenu">
+          <button class="dd-toggle" id="accountToggle">␊
+            {% if user.is_authenticated %}␊
+              {{ user.username }}␊
+            {% else %}␊
+              Mi cuenta␊
+            {% endif %}␊
+          </button>␊
+          <div class="dropdown right" id="accountDropdown">␊
+            {% if user.is_authenticated %}␊
+              <div class="account-inner">␊
+                <div class="account-title">Hola, {{ user.username }}</div>␊
+                <div class="account-links">␊
+                  <a href="#" class="dropdown-action">Mi perfil</a>␊
+                  <a href="#" class="dropdown-action">Mis pedidos</a>␊
+                </div>␊
+                <hr>␊
+                <a class="btn btn-ghost" href="{% url 'tienda:logout' %}">Cerrar sesión</a>
+              </div>␊
+            {% else %}␊
+              <div class="account-inner">␊
+                <div class="account-title">Bienvenido</div>␊
+                <p class="account-meta">Accede para ver tus pedidos.</p>␊
+                <div class="account-actions">␊
+                  <a class="btn btn-primary" href="{% url 'tienda:login' %}">Iniciar sesión</a>
+                  <a class="btn btn-ghost" href="{% url 'tienda:signup' %}">Crear cuenta</a>
+                </div>␊
+              </div>␊
+            {% endif %}␊
+          </div>␊
+        </li>␊
+      </ul>
+    </nav>
+  </header>
+
+  <section class="hero-simple">
+    <div class="hero-inner">
+      <h2>Descubre nuestras ofertas</h2>
+      <p>Productos con envío rápido y garantía.</p>
+    </div>
+  </section>
+
+  <!-- Tabs (siguen funcionando) -->
+  <div class="tabs" role="tablist" aria-label="categorías">
+    <button class="tab" aria-selected="true" role="tab" data-category="">Todos</button>
+    <button class="tab" role="tab" data-category="Ofertas">Ofertas</button>
+  </div>
+
+  <main class="tab-panel">
+    <div id="grid" class="grid-products" aria-live="polite"></div>
+  </main>
+
+  <!-- Modal: Detalles -->
+  <div id="detailsModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-backdrop" data-close="1"></div>
+    <article class="modal-card" role="dialog" aria-modal="true" aria-labelledby="detTitle">
+@@ -122,55 +122,54 @@
+    <article class="modal-card" role="dialog" aria-modal="true" aria-labelledby="qtyTitle">
+      <h3 id="qtyTitle" style="margin:0 0 8px">Agregar al carrito</h3>
+      <p class="cm-name" id="cmName"></p>
+
+      <div class="cm-row">
+        <label for="cmQty">Cantidad</label>
+        <input id="cmQty" type="number" min="1" value="1">
+      </div>
+      <div class="cm-row">
+        <label>Precio unitario</label>
+        <strong id="cmUnit">$0.00</strong>
+      </div>
+      <div class="cm-row total">
+        <label>Total</label>
+        <strong id="cmTotal">$0.00</strong>
+      </div>
+
+      <div class="cm-actions">
+        <button class="btn btn-ghost" data-close="1">Cancelar</button>
+        <button class="btn btn-primary" id=       <button class="dropdown-action" data-cat="">Todas</button>
+            <hr>
+            <div id="catList"><!-- se llena por JS --></div>
+          </div>
+        </li>
+
+        <!-- 🔁 Aquí va el CARRITO (en lugar de “Ofertas”) -->
+        <li class="has-dd" id="cartMenu">
+          <button class="dd-toggle">
+            Carrito <span class="badge-cart" id="cartBadge">0</span>
+          </button>
+          <div class="dropdown right" id="cartDropdown">
+            <div class="cart-head"><strong>Carrito</strong></div>
+            <div class="cart-items" id="cartItems">
+              <div class="meta">Tu carrito está vacío.</div>
+            </div>
+            <div class="cart-foot">
+              <span class="cart-total" id="cartTotal">Total: $0.00</span>
+              <button class="btn btn-primary" id="goCartBtn">Ver carrito</button>
+            </div>
+          </div>
+        </li>
+
+        <!-- 👤 Mi cuenta (login/logout con Django) -->
+        <li class="has-dd" id="accountMenu">
+          <button class="dd-toggle" id="accountToggle">␊
+            {% if user.is_authenticated %}␊
+              {{ user.username }}␊
+            {% else %}␊
+              Mi cuenta␊
+            {% endif %}␊
+          </button>␊
+          <div class="dropdown right" id="accountDropdown">␊
+            {% if user.is_authenticated %}␊
+              <div class="account-inner">␊
+                <div class="account-title">Hola, {{ user.username }}</div>␊
+                <div class="account-links">␊
+                  <a href="#" class="dropdown-action">Mi perfil</a>␊
+                  <a href="#" class="dropdown-action">Mis pedidos</a>␊
+                </div>␊
+                <hr>␊
+                <a class="btn btn-ghost" href="{% url 'tienda:logout' %}">Cerrar sesión</a>
+              </div>␊
+            {% else %}␊
+              <div class="account-inner">␊
+                <div class="account-title">Bienvenido</div>␊
+                <p class="account-meta">Accede para ver tus pedidos.</p>␊
+                <div class="account-actions">␊
+                  <a class="btn btn-primary" href="{% url 'tienda:login' %}">Iniciar sesión</a>
+                  <a class="btn btn-ghost" href="{% url 'tienda:signup' %}">Crear cuenta</a>
+                </div>␊
+              </div>␊
+            {% endif %}␊
+          </div>␊
+        </li>␊
+      </ul>
+    </nav>
+  </header>
+
+  <section class="hero-simple">
+    <div class="hero-inner">
+      <h2>Descubre nuestras ofertas</h2>
+      <p>Productos con envío rápido y garantía.</p>
+    </div>
+  </section>
+
+  <!-- Tabs (siguen funcionando) -->
+  <div class="tabs" role="tablist" aria-label="categorías">
+    <button class="tab" aria-selected="true" role="tab" data-category="">Todos</button>
+    <button class="tab" role="tab" data-category="Ofertas">Ofertas</button>
+  </div>
+
+  <main class="tab-panel">
+    <div id="grid" class="grid-products" aria-live="polite"></div>
+  </main>
+
+  <!-- Modal: Detalles -->
+  <div id="detailsModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-backdrop" data-close="1"></div>
+    <article class="modal-card" role="dialog" aria-modal="true" aria-labelledby="detTitle">
+@@ -122,55 +122,54 @@
+    <article class="modal-card" role="dialog" aria-modal="true" aria-labelledby="qtyTitle">
+      <h3 id="qtyTitle" style="margin:0 0 8px">Agregar al carrito</h3>
+      <p class="cm-name" id="cmName"></p>
+
+      <div class="cm-row">
+        <label for="cmQty">Cantidad</label>
+        <input id="cmQty" type="number" min="1" value="1">
+      </div>
+      <div class="cm-row">
+        <label>Precio unitario</label>
+        <strong id="cmUnit">$0.00</strong>
+      </div>
+      <div class="cm-row total">
+        <label>Total</label>
+        <strong id="cmTotal">$0.00</strong>
+      </div>
+
+      <div class="cm-actions">
+        <button class="btn btn-ghost" data-close="1">Cancelar</button>
+        <button class="btn btn-primary" id="cmConfirm">Agregar</button>
+      </div>
+    </article>
+  </div>
+
+  <!-- Endpoint DRF -->
+  {% url 'tienda:product-list' as product_list_url %}
+  <script>
+    window.PRODUCTS_API = "{{ product_list_url|default:'/products/' }}";
+  </script>
+
+  <script>
+    const $  = sel => document.querySelector(sel);
+    const $$ = sel => document.querySelectorAll(sel);
+    const money = n => Number(n||0).toLocaleString('es-MX',{style:'currency',currency:'MXN'});
+    const PLACEHOLDER = "{% static 'img/placeholder.png' %}";
+
+    // Dropdown genérico
+    document.addEventListener('click', (e) => {
+      const dd = e.target.closest('.has-dd');
+      $$('.has-dd').forEach(el => { if (el !== dd) el.classList.remove('open'); });
+      if (dd && e.target.closest('.dd-toggle')) dd.classList.toggle('open');
+      if (!e.target.closest('.has-dd')) $('.has-dd')?.classList.remove('open');
+    });
+
+    // Tabs (Todos/Ofertas)
+    $$('.tab').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        $$('.tab').forEach(b=>b.setAttribute('aria-selected','false'));
+        btn.setAttribute('aria-selected','true');
+        const cat = btn.dataset.category||'';
+        filterByCategory(cat);
+      });
+    });
