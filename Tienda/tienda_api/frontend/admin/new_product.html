@@ -1,0 +1,87 @@
+{% load static %}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Nuevo producto — Panel</title>
+  <link rel="stylesheet" href="{% static 'css/base.css' %}">
+  <link rel="stylesheet" href="{% static 'css/admin.css' %}">
+  
+</head>
+<body>
+  <div class="panel-wrap">
+    <h1>Crear nuevo producto</h1>
+
+    <div class="messages">
+      {% for m in messages %}
+        <div class="{% if m.tags %}{{ m.tags }}{% endif %}">{{ m }}</div>
+      {% endfor %}
+    </div>
+
+    <form method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+      <div class="grid">
+        <div class="field">
+          <label for="{{ form.name.id_for_label }}">Nombre</label>
+          {{ form.name }}
+        </div>
+        <div class="field">
+          <label for="{{ form.slug.id_for_label }}">Slug (opcional)</label>
+          {{ form.slug }}
+          <div class="note">Si lo dejas vacío se genera a partir del nombre.</div>
+        </div>
+        <div class="field">
+          <label for="{{ form.price.id_for_label }}">Precio (MXN)</label>
+          {{ form.price }}
+        </div>
+        <div class="field">
+          <label for="{{ form.category.id_for_label }}">Categoría</label>
+          {{ form.category }}
+        </div>
+        <div class="field">
+          <label for="{{ form.stock.id_for_label }}">Stock</label>
+          {{ form.stock }}
+        </div>
+        <div class="field">
+          <label for="{{ form.is_active.id_for_label }}">{{ form.is_active }} Activo</label>
+        </div>
+        <div class="field full">
+          <label for="{{ form.description.id_for_label }}">Descripción</label>
+          {{ form.description }}
+        </div>
+        <div class="field full">
+          <label for="{{ form.image_file.id_for_label }}">Imagen</label>
+          {{ form.image_file }}
+          <div class="note">
+            Se guardará en <code>frontend/img/</code> y la ruta en BD será <code>img/archivo.ext</code>.<br>
+            El front la servirá como <code>/static/img/archivo.ext</code>.
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="submit" class="btn btn-primary">Guardar producto</button>
+        <a href="/admin/" class="btn btn-ghost">Ir al admin</a>
+        <a href="/" class="btn btn-ghost">Ir a la tienda</a>
+      </div>
+    </form>
+
+    <hr style="margin:20px 0">
+
+    <div class="list">
+      <h2>Últimos productos creados</h2>
+      <ul>
+        {% for p in last_products %}
+          <li>
+            <span>{{ p.name }} — <span class="price">${{ p.price }}</span></span>
+            <code>{{ p.image }}</code>
+          </li>
+        {% empty %}
+          <li>No hay productos aún.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</body>
+</html>
